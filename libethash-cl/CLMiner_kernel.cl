@@ -92,7 +92,7 @@ static uint2 ROL2(const uint2 vv, const int r)
 	}
 }
 #else
-static uint2 ROL2(const uint2 v, const int n)
+ uint2 ROL2(const uint2 v, const int n)
 {
 	uint2 result;
 	if (n <= 32)
@@ -109,7 +109,7 @@ static uint2 ROL2(const uint2 v, const int n)
 }
 #endif
 
-static void chi(uint2 * a, const uint n, const uint2 * t)
+ void chi(uint2 * a, const uint n, const uint2 * t)
 {
 	a[n+0] = bitselect(t[n + 0] ^ t[n + 2], t[n + 0], t[n + 1]);
 	a[n+1] = bitselect(t[n + 1] ^ t[n + 3], t[n + 1], t[n + 2]);
@@ -118,7 +118,7 @@ static void chi(uint2 * a, const uint n, const uint2 * t)
 	a[n+4] = bitselect(t[n + 4] ^ t[n + 1], t[n + 4], t[n + 0]);
 }
 
-static void keccak_f1600_round(uint2* a, uint r)
+ void keccak_f1600_round(uint2* a, uint r)
 {
 	uint2 t[25];
 	uint2 u;
@@ -204,7 +204,7 @@ static void keccak_f1600_round(uint2* a, uint r)
 	chi(a, 20, t);
 }
 
-static void keccak_f1600_no_absorb(uint2* a, uint out_size, uint isolate)
+ void keccak_f1600_no_absorb(uint2* a, uint out_size, uint isolate)
 {
 	// Originally I unrolled the first and last rounds to interface
 	// better with surrounding code, however I haven't done this
@@ -235,17 +235,17 @@ static void keccak_f1600_no_absorb(uint2* a, uint out_size, uint isolate)
 
 #define copy(dst, src, count) for (uint i = 0; i != count; ++i) { (dst)[i] = (src)[i]; }
 
-static uint fnv(uint x, uint y)
+ uint fnv(uint x, uint y)
 {
 	return x * FNV_PRIME ^ y;
 }
 
-static uint4 fnv4(uint4 x, uint4 y)
+ uint4 fnv4(uint4 x, uint4 y)
 {
 	return x * FNV_PRIME ^ y;
 }
 
-static uint fnv_reduce(uint4 v)
+ uint fnv_reduce(uint4 v)
 {
 	return fnv(fnv(fnv(v.x, v.y), v.z), v.w);
 }
@@ -257,14 +257,14 @@ typedef struct
 
 typedef union {
 	uint	 words[64 / sizeof(uint)];
-	uint2	 uint2s[64 / sizeof(uint2)];
-	uint4	 uint4s[64 / sizeof(uint4)];
+	//uint2	 uint2s[64 / sizeof(uint2)];
+	//uint4	 uint4s[64 / sizeof(uint4)];
 } hash64_t;
 
 typedef union {
 	uint	 words[200 / sizeof(uint)];
-	uint2	 uint2s[200 / sizeof(uint2)];
-	uint4	 uint4s[200 / sizeof(uint4)];
+	//uint2	 uint2s[200 / sizeof(uint2)];
+	//uint4	 uint4s[200 / sizeof(uint4)];
 } hash200_t;
 
 typedef struct
@@ -273,8 +273,8 @@ typedef struct
 } hash128_t;
 
 typedef union {
-	uint4 uint4s[4];
-	ulong ulongs[8];
+	//uint4 uint4s[4];
+	//ulong ulongs[8];
 	uint  uints[16];
 } compute_hash_share;
 
@@ -318,11 +318,16 @@ __kernel void ethash_search(
 	{
 		// share init with other threads
 		if (i == thread_id)
-			copy(share[hash_id].ulongs, state, 8);
+                {
+                        local ulong * share_ulongs = (local ulong*)((local void*) share[hash_id].uints);
+			copy(share_ulongs, state, 8);
+			//copy(share[hash_id].ulongs, state, 8);
+                }
 
 		barrier(CLK_LOCAL_MEM_FENCE);
 
-		uint4 mix = share[hash_id].uint4s[thread_id & 3];
+		uint4 mix = (uint4) share[hash_id].uints[(thread_id & 3)*4];
+		//uint4 mix = share[hash_id].uint4s[thread_id & 3];
 		barrier(CLK_LOCAL_MEM_FENCE);
 
 		__local uint *share0 = share[hash_id].uints;
@@ -350,11 +355,15 @@ __kernel void ethash_search(
 		}
 
 		share[hash_id].uints[thread_id] = fnv_reduce(mix);
+		//share[hash_id].uints[thread_id] = fnv_reduce(mix);
 		barrier(CLK_LOCAL_MEM_FENCE);
 
 		if (i == thread_id)
-			copy(state + 8, share[hash_id].ulongs, 4);
-
+		{
+                        local ulong * share_ulongs = (local ulong*)((local void*) share[hash_id].uints);
+			copy(state + 8, share_ulongs, 4);
+			//copy(state + 8, share[hash_id].ulongs, 4);
+		}
 		barrier(CLK_LOCAL_MEM_FENCE);
 	}
 
@@ -370,12 +379,14 @@ __kernel void ethash_search(
 
 	if (as_ulong(as_uchar8(state[0]).s76543210) < target)
 	{
-		uint slot = min(MAX_OUTPUTS, atomic_inc(&g_output[0]) + 1);
+                //uint tmp_min = atomic_inc(&g_output[0]) + 1; 
+		uint tmp_min = g_output[0]++ + 1; 
+		uint slot = MAX_OUTPUTS < tmp_min ? MAX_OUTPUTS : tmp_min;
 		g_output[slot] = gid;
 	}
 }
 
-static void SHA3_512(uint2* s, uint isolate)
+ void SHA3_512(uint2* s, uint isolate)
 {
 	for (uint i = 8; i != 25; ++i)
 	{
@@ -392,17 +403,32 @@ __kernel void ethash_calculate_dag_item(uint start, __global hash64_t const* g_l
 	if (node_index > DAG_SIZE * 2) return;
 
 	hash200_t dag_node;
-	copy(dag_node.uint4s, g_light[node_index % LIGHT_SIZE].uint4s, 4);
+	
+	uint4 * dag_node_uint4s = (uint4*)((void*) dag_node.words);
+	global uint4 * g_light_uint4s = (global uint4*)((global void*) g_light[node_index % LIGHT_SIZE].words);
+	copy(dag_node_uint4s, g_light_uint4s, 4);
+	//copy(dag_node.uint4s, g_light[node_index % LIGHT_SIZE].uint4s, 4);
+	
 	dag_node.words[0] ^= node_index;
-	SHA3_512(dag_node.uint2s, isolate);
+
+	uint2 * dag_node_uint2s = (uint2*)((void*) dag_node.words);
+
+	SHA3_512(dag_node_uint2s, isolate);
 
 	for (uint i = 0; i != ETHASH_DATASET_PARENTS; ++i) {
 		uint parent_index = fnv(node_index ^ i, dag_node.words[i % NODE_WORDS]) % LIGHT_SIZE;
+		g_light_uint4s = (global uint4*)((global void*) g_light[parent_index].words);
 
 		for (uint w = 0; w != 4; ++w) {
-			dag_node.uint4s[w] = fnv4(dag_node.uint4s[w], g_light[parent_index].uint4s[w]);
+			dag_node_uint4s[w] = fnv4(dag_node_uint4s[w], g_light_uint4s[w]);
+			//dag_node.uint4s[w] = fnv4(dag_node.uint4s[w], g_light[parent_index].uint4s[w]);
 		}
 	}
-	SHA3_512(dag_node.uint2s, isolate);
-	copy(g_dag[node_index].uint4s, dag_node.uint4s, 4);
+	dag_node_uint2s = (uint2*)((void*) dag_node.words);
+	SHA3_512(dag_node_uint2s, isolate);
+	//SHA3_512(dag_node.uint2s, isolate);
+	
+	global uint4 * g_dag_uint4s = (global uint4*)((global void*) g_dag[node_index].words);
+	copy(g_dag_uint4s, dag_node_uint4s, 4);
+	//copy(g_dag[node_index].uint4s, dag_node.uint4s, 4);
 }

@@ -1,0 +1,3 @@
+OPENCL_FILE=CLMiner_kernel eval 'xocc -c --xp "param:compiler.preserveHlsOutput=1" --xp "param:compiler.generateExtraRunData=true" -s -o $OPENCL_FILE\_emu.xo -t sw_emu --platform $AWS_FPGA_REPO_DIR/aws_platform/xilinx_aws-vu9p-f1_4ddr-xpr-2pr_4_0/xilinx_aws-vu9p-f1_4ddr-xpr-2pr_4_0.xpfm $OPENCL_FILE.cl -D PLATFORM=0'
+OPENCL_FILE=CLMiner_kernel eval 'xocc -l --xp "param:compiler.preserveHlsOutput=1" --xp "param:compiler.generateExtraRunData=true" -s -o $OPENCL_FILE\_emu.xclbin -t sw_emu --platform $AWS_FPGA_REPO_DIR/aws_platform/xilinx_aws-vu9p-f1_4ddr-xpr-2pr_4_0/xilinx_aws-vu9p-f1_4ddr-xpr-2pr_4_0.xpfm $OPENCL_FILE\_emu.xo -D PLATFORM=0'
+
